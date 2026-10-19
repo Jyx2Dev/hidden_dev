@@ -1,0 +1,99 @@
+aero = {}
+
+local storage = require(script.Parent.Storage_module)
+
+local camera = require(script.Parent.Camera_module)
+
+local aircraft = script.Parent.Parent.Parent.Main.Engine
+
+local control = aircraft.Control
+
+local force = aircraft.Force
+
+
+
+local sensitivity = {}
+
+sensitivity.roll = 1.7
+
+sensitivity.pitch = 0.175
+
+sensitivity.yaw = 0.13
+
+
+
+
+
+local pitch_rate = 0
+
+local roll_rate = 0
+
+local yaw_rate = 0
+
+
+
+local config = {}
+
+config.lift = 4
+
+config.drag = .0000001
+
+config.thrust = .49
+
+
+
+function aero:Update()
+
+local v = aircraft.AssemblyLinearVelocity
+
+if (v.Magnitude <= 0.0001) then v = aircraft.CFrame.LookVector * .0001 end -- slietnick, prevents NAN errors if the velocity = 0
+
+local m = math.clamp(v.Magnitude^.5/(3*config.lift/config.thrust) - 11/(3*config.lift/config.thrust),0,1)
+
+local l_v = aircraft.CFrame:VectorToObjectSpace(v)
+
+local slip = CFrame.Angles(l_v.Y/1000 * (2-m), -l_v.X/1000 * (2-m), l_v.Y*l_v.X/3e5 * (2-m))
+
+
+
+pitch_rate = pitch_rate * .95 + storage.pitch * sensitivity.pitch * .15
+
+roll_rate = roll_rate * .9 + storage.roll * sensitivity.roll * .15
+
+yaw_rate = yaw_rate * .95 + storage.yaw * sensitivity.yaw * .25
+
+
+
+local m_cf = aircraft.CFrame * CFrame.Angles(pitch_rate * m, yaw_rate * m, roll_rate * m)
+
+local thrust = aircraft.CFrame.LookVector * storage.throttle * config.thrust
+
+local lift = (m_cf.LookVector - v.Unit*1.025) * v.Magnitude * 0.01 
+
+local weight = Vector3.new(0, aircraft.AssemblyMass * workspace.Gravity * math.clamp(m*10, 0.5,.97),0)
+
+local drag
+
+if storage.throttle < 0 then
+
+drag = config.drag * 3
+
+else
+
+drag = config.drag 
+
+end
+
+drag *= math.abs(math.deg(math.atan2(l_v.Y,math.abs(l_v.Z)))) * .005
+
+control.CFrame = m_cf * slip
+
+control.MaxTorque = Vector3.new(aircraft.AssemblyMass * workspace.Gravity * m,aircraft.AssemblyMass * workspace.Gravity * m,aircraft.AssemblyMass * workspace.Gravity * m)
+
+force.Force = aircraft.AssemblyMass * workspace.Gravity * ((lift * m * config.lift) - (v.Unit * drag * v:Dot(v)) + thrust) + weight
+
+end
+
+
+
+return aero 
